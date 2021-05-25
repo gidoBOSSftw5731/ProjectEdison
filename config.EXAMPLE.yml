@@ -1,0 +1,2 @@
+# 4 is trace, 2 is info, 3 is debug, figure out the rest
+LogDepth: 4
