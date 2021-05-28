@@ -1,10 +1,15 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"path"
 	"strings"
+	"time"
 
+	"barista.run/bar"
+	barista "barista.run/modules/media"
+	pb "github.com/gidoBOSSftw5731/ProjectEdison/server/edison_proto"
 	"github.com/gidoBOSSftw5731/log"
 	"github.com/gorilla/websocket"
 	"github.com/jinzhu/configor"
@@ -17,10 +22,14 @@ var config = struct {
 
 	// ListenAddr is the address that will be listened for HTTP requests. It defaults to
 	// 127.0.0.1:8080
-	ListenAddr string `default:"127.0.0.1:8080"`
+	ListenAddr string `default:"0.0.0.0:8080"`
 }{}
 
-var upgrader = websocket.Upgrader{} // use default options
+var (
+	upgrader    = websocket.Upgrader{} // use default options
+	musicPlayer *barista.AutoModule
+	musicInfo   barista.Info
+)
 
 func main() {
 	log.SetCallDepth(4)
@@ -30,6 +39,19 @@ func main() {
 		log.Panicln(err)
 	}
 	log.SetCallDepth(config.LogDepth)
+
+	musicPlayer = barista.Auto()
+
+	// the "repeated output" function seems to require the i3 bar exist, which it doesn't,
+	// so instead of faking it I just do this which is pretty much what the normal func does
+	// anyway except this one should work even if the music isn't paused.
+	go func() {
+		for {
+			musicPlayer = musicPlayer.Output(musicData)
+			musicPlayer.Stream(sink)
+			time.Sleep(500 * time.Millisecond)
+		}
+	}()
 
 	startHTTPListener()
 }
@@ -53,11 +75,25 @@ func startHTTPListener() {
 }
 
 func (*httpHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
+	urlPath := strings.Split(req.URL.Path, "/")
 	// if request is for the API then process it as an api request
-	if strings.HasPrefix(req.URL.Path, "/api") {
-		switch strings.Split("/", req.URL.Path)[3] {
+	// if len = 2 then there is nothing after /api in which case I don't care
+	if strings.HasPrefix(req.URL.Path, "/api") && len(urlPath) > 2 {
+		//log.Traceln("API request made for ", strings.Split(req.URL.Path, "/"), req.URL.Path)
+		switch urlPath[2] {
 		case "ws":
 			initWebSocket(resp, req)
+		case "musicconnected":
+			p := pb.MusicStatus{
+				PlayerName: musicInfo.PlayerName,   
+				PlaybackStatus:  musicInfo.PlaybackStatus
+				Length: musicInfo.Length.Unix(),
+				Title: musicInfo.Title,
+				Artist:  musicInfo.Artist,
+				Album: musicInfo.Album,
+				AlbumArtist: musicInfo.AlbumArtist,
+			}
+			fmt.Fprintf(resp, "%#v", musicInfo)
 		default:
 			log.Debugln("default case, TODO: implement error")
 		}
@@ -110,4 +146,15 @@ EventLoop:
 		}
 
 	}
+}
+
+// throwaway sink because barista is meant for i3 bars and all I want is to cannibalize
+// it for its mpris functionality
+func sink(o bar.Output) {
+	// log.Tracef("Sink output: %#v", o)
+}
+
+func musicData(info barista.Info) bar.Output {
+	musicInfo = info
+	return nil
 }

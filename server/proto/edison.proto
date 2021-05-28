@@ -1,0 +1,16 @@
+syntax = "proto3";
+package edison.proto;
+option go_package = ".;edison_proto";
+
+// musicStatus is a message with the current status of the music being played
+message musicStatus {
+    string PlayerName = 1;
+    string PlaybackStatus = 2;
+    //Not including isShuffled because mpris-proxy does not support it as of now
+    int32 Length = 3;
+    string Title = 4;
+    string Artist = 5;
+    string Album = 6;
+    string AlbumArtist = 7;
+    //Not including artURL because it is not supported by mpris-proxy
+}

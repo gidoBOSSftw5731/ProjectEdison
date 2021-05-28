@@ -1,2 +1,4 @@
 # 4 is trace, 2 is info, 3 is debug, figure out the rest
-LogDepth: 4
+logdepth: 4
+
+listenaddr: 127.0.0.1:8080
