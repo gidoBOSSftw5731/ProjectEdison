@@ -13,6 +13,7 @@ import (
 	"github.com/gidoBOSSftw5731/log"
 	"github.com/gorilla/websocket"
 	"github.com/jinzhu/configor"
+	"google.golang.org/protobuf/encoding/prototext"
 )
 
 var config = struct {
@@ -85,15 +86,22 @@ func (*httpHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 			initWebSocket(resp, req)
 		case "musicconnected":
 			p := pb.MusicStatus{
-				PlayerName: musicInfo.PlayerName,   
-				PlaybackStatus:  musicInfo.PlaybackStatus
-				Length: musicInfo.Length.Unix(),
-				Title: musicInfo.Title,
-				Artist:  musicInfo.Artist,
-				Album: musicInfo.Album,
+				PlayerName:     musicInfo.PlayerName,
+				PlaybackStatus: string(musicInfo.PlaybackStatus),
+				// convert Length from nanoseconds to milliseconds
+				Length:      int32(musicInfo.Length / time.Millisecond),
+				Title:       musicInfo.Title,
+				Artist:      musicInfo.Artist,
+				Album:       musicInfo.Album,
 				AlbumArtist: musicInfo.AlbumArtist,
+				Position:    int32(musicInfo.Position() / time.Millisecond),
 			}
-			fmt.Fprintf(resp, "%#v", musicInfo)
+			buf, err := prototext.Marshal(&p)
+			if err != nil {
+				log.Errorln(err)
+				return
+			}
+			fmt.Fprintf(resp, "%s", buf)
 		default:
 			log.Debugln("default case, TODO: implement error")
 		}
