@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gidoBOSSftw5731/log"
+	"github.com/gorilla/websocket"
 	"github.com/jinzhu/configor"
 )
 
@@ -18,6 +19,8 @@ var config = struct {
 	// 127.0.0.1:8080
 	ListenAddr string `default:"127.0.0.1:8080"`
 }{}
+
+var upgrader = websocket.Upgrader{} // use default options
 
 func main() {
 	log.SetCallDepth(4)
@@ -52,7 +55,9 @@ func startHTTPListener() {
 func (*httpHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	// if request is for the API then process it as an api request
 	if strings.HasPrefix(req.URL.Path, "/api") {
-		switch {
+		switch strings.Split("/", req.URL.Path)[3] {
+		case "ws":
+			initWebSocket(resp, req)
 		default:
 			log.Debugln("default case, TODO: implement error")
 		}
@@ -65,5 +70,44 @@ func (*httpHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	}
 
 	// serve files from src
-	http.ServeFile(resp, req, path.Join("src/"+req.URL.Path))
+	http.ServeFile(resp, req, path.Join("src/", req.URL.Path))
+}
+
+func initWebSocket(resp http.ResponseWriter, req *http.Request) {
+	// Upgrade our raw HTTP connection to a websocket based one
+	conn, err := upgrader.Upgrade(resp, req, nil)
+	if err != nil {
+		log.Errorln("Error during connection upgradation: ", err)
+		return
+	}
+	defer conn.Close()
+
+	// The event loop
+EventLoop:
+	for {
+		messageType, message, err := conn.ReadMessage()
+		if err != nil {
+			log.Errorln("Error during message reading: ", err)
+			break
+		}
+
+		switch messageType {
+		// conn close
+		case 2:
+			log.Debugln("ws connection closed")
+			break EventLoop
+		// text
+		case 0:
+			log.Tracef("Received: %s", message)
+			err = conn.WriteMessage(messageType, message)
+			if err != nil {
+				log.Errorln("Error during message writing: ", err)
+				break EventLoop
+			}
+		// binary
+		case 1:
+			log.Errorln("Binary data recieved but nothing written to handle binary!")
+		}
+
+	}
 }
