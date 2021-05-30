@@ -3,8 +3,11 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rzetterberg/elmobd"
@@ -86,6 +89,9 @@ func main() {
 	if err != nil {
 		log.Errorln("Error connecting to OBD2: ", err)
 	}
+
+	//start websocket looper
+	go wsBroadcaster()
 
 	startHTTPListener()
 }
@@ -265,6 +271,61 @@ EventLoop:
 			log.Errorln("Binary data recieved but nothing written to handle binary!")
 		}
 
+	}
+}
+
+func wsBroadcaster() {
+	done := make(chan interface{})         // Channel to indicate that the receiverHandler is done
+	interrupt := make(chan os.Signal, 5)   // Channel to listen for interrupt signal to terminate gracefully
+	signal.Notify(interrupt, os.Interrupt) // Notify the interrupt channel for SIGINT
+
+	for {
+		select {
+		case <-time.After(time.Millisecond * 500):
+
+			for conn := range sockets {
+				err := conn.WriteMessage(websocket.BinaryMessage, []byte{})
+				if err != nil {
+					log.Println("Error during writing to websocket:", err)
+					return
+				}
+			}
+
+		case <-interrupt:
+			// We received a SIGINT (Ctrl + C). Terminate gracefully...
+			log.Infoln("Received SIGINT interrupt signal. Closing all pending connections")
+
+			// create wg for making sure all conns close gracefully
+			var wg sync.WaitGroup
+
+			wg.Add(1)
+
+			for conn := range sockets {
+				wg.Add(1)
+				err := conn.WriteMessage(websocket.CloseMessage,
+					websocket.FormatCloseMessage(websocket.CloseNormalClosure,
+						"Program Interrupted"))
+				if err != nil {
+					log.Println("Error during writing to websocket:", err)
+					return
+				}
+				wg.Done()
+			}
+			wg.Done()
+
+			go func() {
+				wg.Wait()
+				done <- true
+			}()
+
+			select {
+			case <-done:
+				log.Fatalln("Receiver Channel Closed! Exiting....")
+				return
+			case <-time.After(5 * time.Second):
+				log.Fatalln("Timeout in closing receiving channel. Exiting....")
+			}
+		}
 	}
 }
 
