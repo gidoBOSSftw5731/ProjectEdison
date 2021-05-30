@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -177,28 +178,6 @@ func (*httpHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 		switch urlPath[2] {
 		case "ws":
 			initWebSocket(resp, req)
-		case "musicconnected":
-			p := musicDataToProto()
-			buf, err := prototext.Marshal(p)
-			if err != nil {
-				log.Errorln(err)
-				return
-			}
-			fmt.Fprintf(resp, "%s", buf)
-		case "obdtest":
-			p, err := obdDataToProto()
-			if err != nil {
-				log.Errorln("Error getting obd data: ", err)
-				return
-			}
-
-			buf, err := prototext.Marshal(p)
-			if err != nil {
-				log.Errorln("Error marshalling obd data: ", err)
-				return
-			}
-
-			log.Tracef("%s", buf)
 		case "fullproto":
 			p, err := makeFullProto()
 			if err != nil {
@@ -213,8 +192,8 @@ func (*httpHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 			}
 			log.Tracef("%s", buf)
 			fmt.Fprintf(resp, "%s", buf)
-		case "togglemusic":
-			musicInfo.PlayPause()
+		case "music":
+			musicAPIHandler(resp, req)
 		default:
 			log.Debugln("default case, TODO: implement error")
 		}
@@ -228,6 +207,47 @@ func (*httpHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 
 	// serve files from src
 	http.ServeFile(resp, req, path.Join("src/", req.URL.Path))
+}
+
+// musicAPIHandler recieves requests relating to the music API and returns results.
+func musicAPIHandler(resp http.ResponseWriter, req *http.Request) {
+	urlPath := strings.Split(req.URL.Path, "/")
+
+	if len(urlPath) <= 3 {
+		http.Error(resp, "No argument supplied to music API", 400)
+		return
+	}
+
+	switch urlPath[3] {
+	case "play":
+		musicInfo.Play()
+	case "pause":
+		musicInfo.Pause()
+	case "playpause", "toggleplaying", "toggle":
+		musicInfo.PlayPause()
+	case "skip", "next":
+		musicInfo.Next()
+	case "previous", "back":
+		musicInfo.Previous()
+	case "stop":
+		musicInfo.Stop()
+	case "seek":
+		if len(urlPath) != 5 {
+			http.Error(resp, "Time in seconds required to seek", 400)
+			return
+		}
+
+		seconds, err := strconv.Atoi(urlPath[4])
+		if err != nil {
+			http.Error(resp, "Error converting time in seconds to int", 500)
+		}
+
+		musicInfo.Seek(time.Duration(seconds) * time.Second)
+
+	default:
+		http.Error(resp, "Invalid argument supplied to music API", 400)
+		return
+	}
 }
 
 func initWebSocket(resp http.ResponseWriter, req *http.Request) {
