@@ -9,6 +9,7 @@ import (
 
 	"barista.run/bar"
 	barista "barista.run/modules/media"
+	"github.com/blackjack/webcam"
 	pb "github.com/gidoBOSSftw5731/ProjectEdison/server/edison_proto"
 	"github.com/gidoBOSSftw5731/log"
 	"github.com/gorilla/websocket"
@@ -24,12 +25,19 @@ var config = struct {
 	// ListenAddr is the address that will be listened for HTTP requests. It defaults to
 	// 127.0.0.1:8080
 	ListenAddr string `default:"0.0.0.0:8080"`
+
+	// CameraPath is the linux path to a video device, like a webcam or capture card
+	// defaults to the first webcam (assuming v4l2 is installed and configured)
+	CameraPath string `default:"/dev/video0"`
+
+	PanicWithoutCamera bool `default:"false"`
 }{}
 
 var (
 	upgrader    = websocket.Upgrader{} // use default options
 	musicPlayer *barista.AutoModule
 	musicInfo   barista.Info
+	sockets     []*websocket.Conn
 )
 
 func main() {
@@ -54,7 +62,31 @@ func main() {
 		}
 	}()
 
+	// start webcam capture and stream in its own thread
+	go webcamHandler()
+
 	startHTTPListener()
+}
+
+func webcamHandler() {
+	cam, err := webcam.Open(config.CameraPath)
+	if err != nil {
+		if config.PanicWithoutCamera {
+			log.Panicln("Camera not found! Panicking as per conf: ", err)
+		}
+		log.Errorln("Error opening camera, not panicking as per config: ", err)
+		return
+	}
+	defer cam.Close()
+
+	// select pixel format
+	format_desc := cam.GetSupportedFormats()
+
+	log.Traceln("Available Camera formats:")
+	for _, s := range format_desc {
+		log.Traceln(s)
+	}
+
 }
 
 //boilerplate to make the http package happy
@@ -85,17 +117,7 @@ func (*httpHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 		case "ws":
 			initWebSocket(resp, req)
 		case "musicconnected":
-			p := pb.MusicStatus{
-				PlayerName:     musicInfo.PlayerName,
-				PlaybackStatus: string(musicInfo.PlaybackStatus),
-				// convert Length from nanoseconds to milliseconds
-				Length:      int32(musicInfo.Length / time.Millisecond),
-				Title:       musicInfo.Title,
-				Artist:      musicInfo.Artist,
-				Album:       musicInfo.Album,
-				AlbumArtist: musicInfo.AlbumArtist,
-				Position:    int32(musicInfo.Position() / time.Millisecond),
-			}
+			p := musicDataToProto()
 			buf, err := prototext.Marshal(&p)
 			if err != nil {
 				log.Errorln(err)
@@ -126,9 +148,11 @@ func initWebSocket(resp http.ResponseWriter, req *http.Request) {
 	}
 	defer conn.Close()
 
-	// The event loop
+	sockets = append(sockets, conn)
+
 EventLoop:
 	for {
+		//thread blocks here until message arrives
 		messageType, message, err := conn.ReadMessage()
 		if err != nil {
 			log.Errorln("Error during message reading: ", err)
@@ -165,4 +189,18 @@ func sink(o bar.Output) {
 func musicData(info barista.Info) bar.Output {
 	musicInfo = info
 	return nil
+}
+
+func musicDataToProto() pb.MusicStatus {
+	return pb.MusicStatus{
+		PlayerName:     musicInfo.PlayerName,
+		PlaybackStatus: string(musicInfo.PlaybackStatus),
+		// convert Length from nanoseconds to milliseconds
+		Length:      int32(musicInfo.Length / time.Millisecond),
+		Title:       musicInfo.Title,
+		Artist:      musicInfo.Artist,
+		Album:       musicInfo.Album,
+		AlbumArtist: musicInfo.AlbumArtist,
+		Position:    int32(musicInfo.Position() / time.Millisecond),
+	}
 }

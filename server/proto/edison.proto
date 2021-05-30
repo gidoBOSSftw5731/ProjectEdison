@@ -2,6 +2,10 @@ syntax = "proto3";
 package edison.proto;
 option go_package = ".;edison_proto";
 
+message msg {
+    musicStatus music = 1;
+}
+
 // musicStatus is a message with the current status of the music being played
 //Not including isShuffled or artURL because mpris-proxy does not support it as of now
 message musicStatus {

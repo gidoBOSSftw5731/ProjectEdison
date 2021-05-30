@@ -4,6 +4,7 @@ go 1.13
 
 require (
 	barista.run v0.0.0-20210521202553-e76ea38ff543
+	github.com/blackjack/webcam v0.0.0-20200313125108-10ed912a8539
 	github.com/gidoBOSSftw5731/ProjectEdison/server/edison_proto v0.0.0-00010101000000-000000000000
 	github.com/gidoBOSSftw5731/log v0.0.0-20210527210830-1611311b4b64
 	github.com/gorilla/websocket v1.4.2
