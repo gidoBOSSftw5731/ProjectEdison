@@ -1,4 +1,9 @@
 # 4 is trace, 2 is info, 3 is debug, figure out the rest
 logdepth: 4
+listenaddr: 0.0.0.0:8081
 
-listenaddr: 127.0.0.1:8080
+#this is for bluetooth, change if necessary.
+obd2path: /dev/rfcomm0
+
+#set to false to use a real obd2 serial connection
+testing: true
