@@ -79,7 +79,7 @@ func main() {
 	//connect to obd2
 	switch config.Testing {
 	case false:
-		obdConn, err = elmobd.NewDevice(config.OBD2Path, false)
+		obdConn, err = elmobd.NewDevice(config.OBD2Path, false, false)
 	case true:
 		obdConn, err = elmobd.NewTestDevice(config.OBD2Path, true)
 	}
@@ -136,15 +136,15 @@ func obdDataToProto() (*pb.CarStatus, error) {
 		elmobd.NewFuel(),
 		elmobd.NewCoolantTemperature(),
 		//engine load not supported by test, using random filler
-		//elmobd.NewEngineLoad(),
-		elmobd.NewFuel(),
+		elmobd.NewEngineLoad(),
+//		elmobd.NewFuel(),
 		elmobd.NewEngineRPM(),
 		//also not supported
-		//elmobd.NewFuelPressure(),
-		elmobd.NewVehicleSpeed(),
+		elmobd.NewFuelPressure(),
+		//elmobd.NewVehicleSpeed(),
 		elmobd.NewVehicleSpeed(),
 		//not supported
-		//elmobd.NewIntakeAirTemperature(),
+		elmobd.NewIntakeAirTemperature(),
 	)
 	if err != nil {
 		return &p, err
@@ -153,11 +153,11 @@ func obdDataToProto() (*pb.CarStatus, error) {
 	return &pb.CarStatus{
 		FuelLevel:   commands[0].(*elmobd.Fuel).FloatCommand.Value,
 		CoolantTemp: int32(commands[1].(*elmobd.CoolantTemperature).IntCommand.Value),
-		//EngineLoad:    commands[2].(*elmobd.EngineLoad).FloatCommand.Value,
+		EngineLoad:    commands[2].(*elmobd.EngineLoad).FloatCommand.Value,
 		EngineRPM: commands[3].(*elmobd.EngineRPM).FloatCommand.Value,
-		//FuelPressure:  commands[4].(*elmobd.FuelPressure).UIntCommand.Value,
+		FuelPressure:  commands[4].(*elmobd.FuelPressure).UIntCommand.Value,
 		VehicleSpeed: commands[5].(*elmobd.VehicleSpeed).UIntCommand.Value,
-		//IntakeAirTemp: int32(commands[6].(*elmobd.IntakeAirTemperature).IntCommand.Value),
+		IntakeAirTemp: int32(commands[6].(*elmobd.IntakeAirTemperature).IntCommand.Value),
 	}, nil
 }
 

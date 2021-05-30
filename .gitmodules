@@ -1,0 +1,3 @@
+[submodule "server/elmobd"]
+	path = server/elmobd
+	url = git@github.com:gidoBOSSftw5731/elmobd.git
