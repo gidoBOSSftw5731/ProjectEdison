@@ -10,7 +10,10 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/jinzhu/configor v1.2.1
 	github.com/prometheus/common v0.25.0
+	github.com/rzetterberg/elmobd v0.0.0-20200309135549-334e700512dd
 	google.golang.org/protobuf v1.26.0
 )
 
 replace github.com/gidoBOSSftw5731/ProjectEdison/server/edison_proto => ./proto
+
+replace github.com/rzetterberg/elmobd => ./elmobd

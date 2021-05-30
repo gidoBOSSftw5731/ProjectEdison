@@ -3,7 +3,8 @@ package edison.proto;
 option go_package = ".;edison_proto";
 
 message msg {
-    musicStatus music = 1;
+    musicStatus music   =   1;
+    carStatus   car     =   2;
 }
 
 // musicStatus is a message with the current status of the music being played
@@ -19,4 +20,16 @@ message musicStatus {
     string AlbumArtist = 7;
     // in milliseconds from start
     int32 Position = 8;
+}
+
+//carStatus is a message with data from the obd2 sensor.
+// Units in metric where applicable or a percentage from 0 to 1
+message carStatus {
+    float fuelLevel = 1;
+    int32 coolantTemp = 2;
+    float engineLoad = 3;
+    float engineRPM = 4;
+    uint32 fuelPressure = 5;
+    uint32 vehicleSpeed = 6;
+    int32 intakeAirTemp = 7;
 }

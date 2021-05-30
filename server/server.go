@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rzetterberg/elmobd"
+
 	"barista.run/bar"
 	barista "barista.run/modules/media"
 	"github.com/blackjack/webcam"
@@ -31,6 +33,14 @@ var config = struct {
 	CameraPath string `default:"/dev/video0"`
 
 	PanicWithoutCamera bool `default:"false"`
+
+	// This program will have rudementary OBD2 support and therefore will connect to one over
+	// serial and/or bluetooth. This default is for bluetooth, rfcomm needs to be configured
+	// elsewhere
+	OBD2Path string `default:"/dev/rfcomm0"`
+
+	// set to true to use a spoofed obd2 device
+	Testing bool `default:"false"`
 }{}
 
 var (
@@ -38,6 +48,7 @@ var (
 	musicPlayer *barista.AutoModule
 	musicInfo   barista.Info
 	sockets     []*websocket.Conn
+	obdConn     *elmobd.Device
 )
 
 func main() {
@@ -64,6 +75,17 @@ func main() {
 
 	// start webcam capture and stream in its own thread
 	go webcamHandler()
+
+	//connect to obd2
+	switch config.Testing {
+	case false:
+		obdConn, err = elmobd.NewDevice(config.OBD2Path, false)
+	case true:
+		obdConn, err = elmobd.NewTestDevice(config.OBD2Path, true)
+	}
+	if err != nil {
+		log.Errorln("Error connecting to OBD2: ", err)
+	}
 
 	startHTTPListener()
 }
@@ -107,6 +129,38 @@ func startHTTPListener() {
 
 }
 
+func obdDataToProto() (*pb.CarStatus, error) {
+	var p pb.CarStatus
+
+	commands, err := obdConn.RunManyOBDCommands(
+		elmobd.NewFuel(),
+		elmobd.NewCoolantTemperature(),
+		//engine load not supported by test, using random filler
+		//elmobd.NewEngineLoad(),
+		elmobd.NewFuel(),
+		elmobd.NewEngineRPM(),
+		//also not supported
+		//elmobd.NewFuelPressure(),
+		elmobd.NewVehicleSpeed(),
+		elmobd.NewVehicleSpeed(),
+		//not supported
+		//elmobd.NewIntakeAirTemperature(),
+	)
+	if err != nil {
+		return &p, err
+	}
+
+	return &pb.CarStatus{
+		FuelLevel:   commands[0].(*elmobd.Fuel).FloatCommand.Value,
+		CoolantTemp: int32(commands[1].(*elmobd.CoolantTemperature).IntCommand.Value),
+		//EngineLoad:    commands[2].(*elmobd.EngineLoad).FloatCommand.Value,
+		EngineRPM: commands[3].(*elmobd.EngineRPM).FloatCommand.Value,
+		//FuelPressure:  commands[4].(*elmobd.FuelPressure).UIntCommand.Value,
+		VehicleSpeed: commands[5].(*elmobd.VehicleSpeed).UIntCommand.Value,
+		//IntakeAirTemp: int32(commands[6].(*elmobd.IntakeAirTemperature).IntCommand.Value),
+	}, nil
+}
+
 func (*httpHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	urlPath := strings.Split(req.URL.Path, "/")
 	// if request is for the API then process it as an api request
@@ -124,6 +178,20 @@ func (*httpHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 				return
 			}
 			fmt.Fprintf(resp, "%s", buf)
+		case "obdtest":
+			p, err := obdDataToProto()
+			if err != nil {
+				log.Errorln("Error getting obd data: ", err)
+				return
+			}
+
+			buf, err := prototext.Marshal(p)
+			if err != nil {
+				log.Errorln("Error marshalling obd data: ", err)
+				return
+			}
+
+			log.Tracef("%s", buf)
 		default:
 			log.Debugln("default case, TODO: implement error")
 		}
