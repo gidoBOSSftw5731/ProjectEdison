@@ -20,6 +20,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/jinzhu/configor"
 	"google.golang.org/protobuf/encoding/prototext"
+	"google.golang.org/protobuf/proto"
 )
 
 var config = struct {
@@ -283,8 +284,19 @@ func wsBroadcaster() {
 		select {
 		case <-time.After(time.Millisecond * 500):
 
+			p, err := makeFullProto()
+			if err != nil {
+				log.Errorln("Error in making proto for wsloop: ", err)
+				continue
+			}
+			buf, err := proto.Marshal(p)
+			if err != nil {
+				log.Errorln("Error marshalling proto in wsloop: ", err)
+				continue
+			}
+
 			for conn := range sockets {
-				err := conn.WriteMessage(websocket.BinaryMessage, []byte{})
+				err := conn.WriteMessage(websocket.BinaryMessage, buf)
 				if err != nil {
 					log.Println("Error during writing to websocket:", err)
 					return
@@ -302,14 +314,16 @@ func wsBroadcaster() {
 
 			for conn := range sockets {
 				wg.Add(1)
-				err := conn.WriteMessage(websocket.CloseMessage,
-					websocket.FormatCloseMessage(websocket.CloseNormalClosure,
-						"Program Interrupted"))
-				if err != nil {
-					log.Println("Error during writing to websocket:", err)
-					return
-				}
-				wg.Done()
+				go func() {
+					defer wg.Done()
+					err := conn.WriteMessage(websocket.CloseMessage,
+						websocket.FormatCloseMessage(websocket.CloseNormalClosure,
+							"Program Interrupted"))
+					if err != nil {
+						log.Errorln("Error during writing to websocket:", err)
+						return
+					}
+				}()
 			}
 			wg.Done()
 
