@@ -47,7 +47,7 @@ var (
 	upgrader    = websocket.Upgrader{} // use default options
 	musicPlayer *barista.AutoModule
 	musicInfo   barista.Info
-	sockets     []*websocket.Conn
+	sockets     = make(map[*websocket.Conn]bool)
 	obdConn     *elmobd.Device
 )
 
@@ -137,7 +137,7 @@ func obdDataToProto() (*pb.CarStatus, error) {
 		elmobd.NewCoolantTemperature(),
 		//engine load not supported by test, using random filler
 		elmobd.NewEngineLoad(),
-//		elmobd.NewFuel(),
+		//		elmobd.NewFuel(),
 		elmobd.NewEngineRPM(),
 		//also not supported
 		elmobd.NewFuelPressure(),
@@ -151,12 +151,12 @@ func obdDataToProto() (*pb.CarStatus, error) {
 	}
 
 	return &pb.CarStatus{
-		FuelLevel:   commands[0].(*elmobd.Fuel).FloatCommand.Value,
-		CoolantTemp: int32(commands[1].(*elmobd.CoolantTemperature).IntCommand.Value),
+		FuelLevel:     commands[0].(*elmobd.Fuel).FloatCommand.Value,
+		CoolantTemp:   int32(commands[1].(*elmobd.CoolantTemperature).IntCommand.Value),
 		EngineLoad:    commands[2].(*elmobd.EngineLoad).FloatCommand.Value,
-		EngineRPM: commands[3].(*elmobd.EngineRPM).FloatCommand.Value,
+		EngineRPM:     commands[3].(*elmobd.EngineRPM).FloatCommand.Value,
 		FuelPressure:  commands[4].(*elmobd.FuelPressure).UIntCommand.Value,
-		VehicleSpeed: commands[5].(*elmobd.VehicleSpeed).UIntCommand.Value,
+		VehicleSpeed:  commands[5].(*elmobd.VehicleSpeed).UIntCommand.Value,
 		IntakeAirTemp: int32(commands[6].(*elmobd.IntakeAirTemperature).IntCommand.Value),
 	}, nil
 }
@@ -172,7 +172,7 @@ func (*httpHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 			initWebSocket(resp, req)
 		case "musicconnected":
 			p := musicDataToProto()
-			buf, err := prototext.Marshal(&p)
+			buf, err := prototext.Marshal(p)
 			if err != nil {
 				log.Errorln(err)
 				return
@@ -192,6 +192,22 @@ func (*httpHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 			}
 
 			log.Tracef("%s", buf)
+		case "fullproto":
+			p, err := makeFullProto()
+			if err != nil {
+				log.Errorln("Error getting full proto: ", err)
+				return
+			}
+
+			buf, err := prototext.Marshal(p)
+			if err != nil {
+				log.Errorln("Error marshalling all data: ", err)
+				return
+			}
+			log.Tracef("%s", buf)
+			fmt.Fprintf(resp, "%s", buf)
+		case "togglemusic":
+			musicInfo.PlayPause()
 		default:
 			log.Debugln("default case, TODO: implement error")
 		}
@@ -216,7 +232,11 @@ func initWebSocket(resp http.ResponseWriter, req *http.Request) {
 	}
 	defer conn.Close()
 
-	sockets = append(sockets, conn)
+	//add to list of connections to broadcast to regularly and then remove it from list once
+	// the conn is closed. Hypothetically, there's a small amount of time when both
+	// the conn is closed and the socket is in the map, but this seems unlikely to cause issue
+	sockets[conn] = true
+	defer delete(sockets, conn)
 
 EventLoop:
 	for {
@@ -259,8 +279,8 @@ func musicData(info barista.Info) bar.Output {
 	return nil
 }
 
-func musicDataToProto() pb.MusicStatus {
-	return pb.MusicStatus{
+func musicDataToProto() *pb.MusicStatus {
+	return &pb.MusicStatus{
 		PlayerName:     musicInfo.PlayerName,
 		PlaybackStatus: string(musicInfo.PlaybackStatus),
 		// convert Length from nanoseconds to milliseconds
@@ -271,4 +291,17 @@ func musicDataToProto() pb.MusicStatus {
 		AlbumArtist: musicInfo.AlbumArtist,
 		Position:    int32(musicInfo.Position() / time.Millisecond),
 	}
+}
+
+func makeFullProto() (*pb.Msg, error) {
+	var p = pb.Msg{Music: musicDataToProto()}
+
+	obdResp, err := obdDataToProto()
+	if err != nil {
+		return nil, err
+	}
+
+	p.Car = obdResp
+
+	return &p, nil
 }
