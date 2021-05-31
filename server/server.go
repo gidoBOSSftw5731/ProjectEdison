@@ -84,7 +84,7 @@ func main() {
 	//connect to obd2
 	switch config.Testing {
 	case false:
-		obdConn, err = elmobd.NewDevice(config.OBD2Path, false, false)
+		obdConn, err = elmobd.NewDevice(config.OBD2Path, false, true)
 	case true:
 		obdConn, err = elmobd.NewTestDevice(config.OBD2Path, true)
 	}
@@ -143,15 +143,11 @@ func obdDataToProto() (*pb.CarStatus, error) {
 	commands, err := obdConn.RunManyOBDCommands(
 		elmobd.NewFuel(),
 		elmobd.NewCoolantTemperature(),
-		//engine load not supported by test, using random filler
 		elmobd.NewEngineLoad(),
-		//		elmobd.NewFuel(),
 		elmobd.NewEngineRPM(),
-		//also not supported
-		elmobd.NewFuelPressure(),
-		//elmobd.NewVehicleSpeed(),
+		//not supported on mini cooper
+//		elmobd.NewFuelPressure(),
 		elmobd.NewVehicleSpeed(),
-		//not supported
 		elmobd.NewIntakeAirTemperature(),
 	)
 	if err != nil {
@@ -163,9 +159,9 @@ func obdDataToProto() (*pb.CarStatus, error) {
 		CoolantTemp:   int32(commands[1].(*elmobd.CoolantTemperature).IntCommand.Value),
 		EngineLoad:    commands[2].(*elmobd.EngineLoad).FloatCommand.Value,
 		EngineRPM:     commands[3].(*elmobd.EngineRPM).FloatCommand.Value,
-		FuelPressure:  commands[4].(*elmobd.FuelPressure).UIntCommand.Value,
-		VehicleSpeed:  commands[5].(*elmobd.VehicleSpeed).UIntCommand.Value,
-		IntakeAirTemp: int32(commands[6].(*elmobd.IntakeAirTemperature).IntCommand.Value),
+//		FuelPressure:  commands[4].(*elmobd.FuelPressure).UIntCommand.Value,
+		VehicleSpeed:  commands[4].(*elmobd.VehicleSpeed).UIntCommand.Value,
+		IntakeAirTemp: int32(commands[5].(*elmobd.IntakeAirTemperature).IntCommand.Value),
 	}, nil
 }
 
@@ -309,6 +305,9 @@ func wsBroadcaster() {
 				log.Errorln("Error in making proto for wsloop: ", err)
 				continue
 			}
+
+			log.Tracef("%#v", *p.Car)
+
 			buf, err := proto.Marshal(p)
 			if err != nil {
 				log.Errorln("Error marshalling proto in wsloop: ", err)
